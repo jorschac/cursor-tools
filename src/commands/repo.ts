@@ -4,12 +4,19 @@ import { loadConfig, loadEnv } from '../config.ts';
 import { readFileSync } from 'node:fs';
 import { pack } from 'repomix';
 import { ignorePatterns, includePatterns, outputOptions } from '../repomix/repomixConfig.ts';
+import { FRIDAY_URL, FRIDAY_API_KEY } from '../constants.ts';
 export class RepoCommand implements Command {
   private config: Config;
+  private FRIDAY_URL: string;
 
   constructor() {
     loadEnv();
     this.config = loadConfig();
+    this.FRIDAY_URL = FRIDAY_URL;  
+  }
+
+  private concatURL(opts: {model: string}): string {
+    return `${this.FRIDAY_URL}${opts.model}:StreamGenerateContent`;
   }
 
   private async fetchGeminiResponse(
@@ -17,9 +24,9 @@ export class RepoCommand implements Command {
     repoContext: string,
     options?: CommandOptions
   ): Promise<string> {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = FRIDAY_API_KEY;
     if (!apiKey) {
-      throw new Error('GEMINI_API_KEY environment variable is not set');
+      throw new Error('FRIDAY_API_KEY environment variable is not set');
     }
 
     let cursorRules = '';
@@ -29,21 +36,27 @@ export class RepoCommand implements Command {
       // Ignore if .cursorrules doesn't exist
     }
 
+    const url = this.concatURL({model: options?.model || this.config.gemini.model});
+
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${options?.model || this.config.gemini.model}:generateContent?key=${apiKey}`,
+      url,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           contents: [
             {
+              role: 'user',
               parts: [{ text: cursorRules }, { text: repoContext }, { text: query }],
             },
           ],
           generationConfig: {
             maxOutputTokens: options?.maxTokens || this.config.gemini.maxTokens,
+            temperature: 0.9,
+            topP: 0.8,
           },
         }),
       }
@@ -51,12 +64,12 @@ export class RepoCommand implements Command {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Gemini API error (${response.status}): ${errorText}`);
+      throw new Error(`Friday API错误 (${response.status}): ${errorText}`);
     }
 
     const data = await response.json();
     if (data.error) {
-      throw new Error(`Gemini API error: ${JSON.stringify(data.error, null, 2)}`);
+      throw new Error(`Friday API错误: ${JSON.stringify(data.error, null, 2)}`);
     }
 
     return data.candidates[0].content.parts[0].text;
@@ -64,9 +77,10 @@ export class RepoCommand implements Command {
 
   async *execute(query: string, options?: CommandOptions): CommandGenerator {
     try {
-      yield 'Packing repository using repomix...\n';
-
-      await pack(process.cwd(), {
+      yield '正在打包仓库...\n';
+      // https://github.com/yamadashy/repomix/blob/main/src/core/packager.ts
+      const rootDirs = [process.cwd()];
+      await pack(rootDirs, {
         output: {
           ...outputOptions,
           filePath: '.repomix-output.txt',
@@ -78,25 +92,26 @@ export class RepoCommand implements Command {
           customPatterns: ignorePatterns,
         },
         security: {
-          enableSecurityCheck: true,
+          enableSecurityCheck: false,
         },
         tokenCount: {
           encoding: this.config.tokenCount?.encoding || 'o200k_base',
         },
+        // TODO: repomix支持.md格式的自定义指令，用于客制化需求，详见：https://repomix.com/zh-cn/guide/custom-instructions
         cwd: process.cwd(),
       });
 
       const repoContext = readFileSync('.repomix-output.txt', 'utf-8');
 
       const model = options?.model || this.config.gemini.model;
-      yield `Querying Gemini AI using ${model}...\n`;
+      yield `正在使用${model}生成回答...\n`;
       const response = await this.fetchGeminiResponse(query, repoContext, options);
       yield response;
     } catch (error) {
       if (error instanceof Error) {
-        yield `Error: ${error.message}`;
+        yield `错误: ${error.message}`;
       } else {
-        yield 'An unknown error occurred';
+        yield '未知错误';
       }
     }
   }

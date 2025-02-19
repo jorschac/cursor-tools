@@ -3,6 +3,11 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+node_modules
+dist
+coverage
+package-lock.json
+packages/runtime/src/**/yarn.lock
 
 # Environment variables
 .env
@@ -15,6 +20,9 @@ yarn-error.log*
 dist/
 !dist/.cursorrules
 build/
+/build
+packages/*/build
+talos/build
 
 # IDE
 .idea/
@@ -35,3 +43,17 @@ repomix-output.txt
 test-videos/
 screenshot.png
 screenshots/
+
+# Editor directories and files
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.rome
+
+temp.*.ts
+
+**/cli-rust/target
+packages/tool-log/build
