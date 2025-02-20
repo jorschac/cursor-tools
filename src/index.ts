@@ -125,49 +125,54 @@ async function main() {
   };
   const queryArgs: string[] = [];
 
+  // 解析命令行参数，构建键值对
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg.startsWith('--')) {
-      // Handle both --key=value and --key value formats
       let key: string;
       let value: string | undefined;
-
-      const equalIndex = arg.indexOf('=');
-      if (equalIndex !== -1) {
-        // --key=value format
-        key = arg.slice(2, equalIndex);
-        value = arg.slice(equalIndex + 1);
-      } else {
-        let isNoPrefix = false;
-        // Check for --no- prefix
-        if (arg.startsWith('--no-')) {
-          // --no-key format for boolean options
-          key = arg.slice(5); // Remove --no- prefix
-          const normalizedKey = normalizeArgKey(key.toLowerCase());
-          const optionKey = OPTION_KEYS[normalizedKey];
-          if (BOOLEAN_OPTIONS.has(optionKey as BooleanOption)) {
-            value = 'false'; // Implicitly set boolean flag to false
-            isNoPrefix = true;
-          } else {
-            key = arg.slice(2); // Treat as normal key if not a boolean option
-          }
-        } else {
-          // --key value format
-          key = arg.slice(2);
-        }
-
-        // For boolean flags without --no- prefix, check next argument for explicit true/false
+      let isNoPrefix = false;
+      /**
+       * flag 格式为 --no-key 的行为:
+       * --no-[key]/--[key] false -> {key: false} 禁用配置项
+       * --[key] true -> {key: true} 启用配置项
+       * 
+       * e.g. 
+       * --no-console/--console false -> 禁止捕获浏览器log
+       * --console true -> 开启捕获浏览器log
+       * 
+       * 
+       * 
+       * flag 格式为 --key 的行为:
+       * --[key] [val] -> {key: val} 设置该配置项的值为传进来的val
+       * 
+       * e.g. 
+       * --output docs.md -> 文档输出路径为 docs.md 
+       */
+      if (arg.startsWith('--no-')) {
+        // --no-key format for boolean options
+        key = arg.slice(5); // Remove --no- prefix
         const normalizedKey = normalizeArgKey(key.toLowerCase());
         const optionKey = OPTION_KEYS[normalizedKey];
-        if (!isNoPrefix && BOOLEAN_OPTIONS.has(optionKey as BooleanOption)) {
-          // Check if next argument is 'true' or 'false'
-          if (i + 1 < args.length && ['true', 'false'].includes(args[i + 1].toLowerCase())) {
-            value = args[i + 1].toLowerCase();
-            i++; // Skip the next argument since we've used it as the value
-          } else {
-            value = 'true'; // Default to true if no explicit value
-          }
-        } else if (!isNoPrefix) {
+        if (BOOLEAN_OPTIONS.has(optionKey as BooleanOption)) {
+          value = 'false'; // Implicitly set boolean flag to false
+          isNoPrefix = true;
+        } else {
+          key = arg.slice(2); // Treat as normal key if not a boolean option
+        }
+      } else {
+        // --key value format
+        key = arg.slice(2);
+      }
+
+      // For boolean flags without --no- prefix, check next argument for explicit true/false
+      const normalizedKey = normalizeArgKey(key.toLowerCase());
+      const optionKey = OPTION_KEYS[normalizedKey];
+      if (!isNoPrefix) {
+        if (BOOLEAN_OPTIONS.has(optionKey as BooleanOption)) {
+          // For boolean options, directly set value to true
+          value = 'true';
+        } else {
           // For non-boolean options, look for a value
           if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
             value = args[i + 1];
@@ -176,14 +181,10 @@ async function main() {
         }
       }
 
-      // Normalize and validate the key
-      const normalizedKey = normalizeArgKey(key.toLowerCase());
-      const optionKey = OPTION_KEYS[normalizedKey];
-
       if (!optionKey) {
-        console.error(`Error: Unknown option '--${key}'`);
+        console.error(`【错误】'--${key}' 不是一个有效的flag`);
         console.error(
-          'Available options:',
+          '【可用flag】:',
           Array.from(new Set(Object.values(OPTION_KEYS)))
             .map((k) => `--${toKebabCase(k)}`)
             .join(', ')
@@ -192,14 +193,14 @@ async function main() {
       }
 
       if (value === undefined && !BOOLEAN_OPTIONS.has(optionKey as BooleanOption)) {
-        console.error(`Error: No value provided for option '--${key}'`);
+        console.error(`【错误】'--${key}' 需要一个值`);
         process.exit(1);
       }
 
       if (NUMERIC_OPTIONS.has(optionKey as NumberOption)) {
         const num = parseInt(value!, 10);
         if (isNaN(num)) {
-          console.error(`Error: ${optionKey} must be a number`);
+          console.error(`【错误】${optionKey} 必须是一个数字`);
           process.exit(1);
         }
         options[optionKey as NumberOption] = num;
@@ -217,9 +218,8 @@ async function main() {
 
   if (!command) {
     console.error(
-      'Usage: cursor-tools [--model=<model>] [--max-tokens=<number>] [--from-github=<github_url>] [--output=<filepath>] [--save-to=<filepath>] [--hint=<hint>] <command> "<query>"\n' +
-        '       Note: Options can be specified in kebab-case (--max-tokens) or camelCase (--maxTokens)\n' +
-        '       Both --key=value and --key value formats are supported'
+      'Usage: cursor-tools [--model <model>] [--max-tokens <number>] [--from-github <github_url>] [--output <filepath>] [--save-to <filepath>] [--hint <hint>] <command> "<query>"\n' +
+        '       Note: Options can be specified in kebab-case (--max-tokens) or camelCase (--maxTokens)\n'
     );
     process.exit(1);
   }
@@ -228,15 +228,15 @@ async function main() {
     if (command === 'doc') {
       // no query for doc command is ok
     } else {
-      console.error(`Error: No query provided for command: ${command}`);
+      console.error(`【错误】${command} 需要一个查询参数`);
       process.exit(1);
     }
   }
 
   const commandHandler = commands[command];
   if (!commandHandler) {
-    console.error(`Unknown command: ${command}`);
-    console.error('Available commands: ' + Object.keys(commands).join(', '));
+    console.error(`【错误】${command} 不是一个有效的命令`);
+    console.error('【可用命令】: ' + Object.keys(commands).join(', '));
     process.exit(1);
   }
 
@@ -244,9 +244,9 @@ async function main() {
   if (command !== 'install') {
     const result = checkCursorRules(process.cwd());
     if (result.kind === 'success' && result.needsUpdate && result.message) {
-      console.error('\x1b[33m%s\x1b[0m', `Warning: ${result.message}`); // Yellow text
+      console.error('\x1b[33m%s\x1b[0m', `【警告】${result.message}`); // Yellow text
     } else if (result.kind === 'error') {
-      console.error('\x1b[31m%s\x1b[0m', `Error: ${result.message}`); // Red text
+      console.error('\x1b[31m%s\x1b[0m', `【错误】${result.message}`); // Red text
     }
   }
 
@@ -258,8 +258,8 @@ async function main() {
         try {
           mkdirSync(dir, { recursive: true });
         } catch (err) {
-          console.error(`Error creating directory: ${dir}`, err);
-          console.error('Output will not be saved to file.');
+          console.error(`【错误】创建目录 ${dir} 失败`, err);
+          console.error('输出不会保存到文件');
           options.saveTo = undefined;
         }
       }
@@ -269,21 +269,21 @@ async function main() {
         try {
           writeFileSync(options.saveTo, '');
         } catch (err) {
-          console.error(`Error clearing file: ${options.saveTo}`, err);
-          console.error('Output will not be saved to file.');
+          console.error(`【错误】清除文件 ${options.saveTo} 失败`, err);
+          console.error('输出不会保存到文件');
           options.saveTo = undefined;
         }
       }
     }
 
-    // Execute the command and handle output
+    // 生成式执行注册的命令类
     for await (const output of commandHandler.execute(query, options)) {
       process.stdout.write(output);
       if (options.saveTo) {
         try {
           appendFileSync(options.saveTo, output);
         } catch (err) {
-          console.error(`Error writing to file: ${options.saveTo}`, err);
+          console.error(`【错误】写入文件 ${options.saveTo} 失败`, err);
           // Disable file writing for subsequent outputs
           options.saveTo = undefined;
         }
@@ -294,10 +294,10 @@ async function main() {
     console.error('');
 
     if (options.saveTo) {
-      console.error(`Output saved to: ${options.saveTo}`);
+      console.log(`输出文件已保存到: ${options.saveTo}`);
     }
   } catch (error) {
-    console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('【错误】', error instanceof Error ? error.message : 'Unknown error');
     process.exit(1);
   }
 }
@@ -305,6 +305,6 @@ async function main() {
 main()
   .then(() => process.exit(0))
   .catch((error) => {
-    console.error('Fatal error:', error);
+    console.error('【错误】', error);
     process.exit(1);
   });

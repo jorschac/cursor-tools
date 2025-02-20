@@ -1,17 +1,29 @@
 export interface Config {
+  /**
+   * perplexity配置
+   */
   perplexity: {
     model: string;
     apiKey?: string;
     maxTokens?: number;
   };
+  /**
+   * gemini配置，考虑替换Friday
+   */
   gemini: {
     model: string;
     apiKey?: string;
     maxTokens?: number;
   };
+  /**
+   * 文档处理配置
+   */
   doc?: {
     maxRepoSizeMB?: number; // Maximum repository size in MB for remote processing
   };
+  /**
+   * 令牌计数配置，默认使用o200k_base 
+   */ 
   tokenCount?: {
     encoding: 'o200k_base' | 'gpt2' | 'r50k_base' | 'p50k_base' | 'p50k_edit' | 'cl100k_base'; // The tokenizer encoding to use
   };
@@ -20,6 +32,9 @@ export interface Config {
     defaultViewport?: string; // Default viewport size (e.g. '1280x720')
     timeout?: number; // Default navigation timeout in milliseconds
   };
+  /**
+   * stagehand配置
+   */
   stagehand?: {
     provider: 'anthropic' | 'openai';
     verbose?: boolean;
@@ -34,7 +49,7 @@ export const defaultConfig: Config = {
     maxTokens: 4000,
   },
   gemini: {
-    model: 'gemini-2.0-pro-exp-02-05',
+    model: 'gemini-1.5-pro-001',
     maxTokens: 10000,
   },
   doc: {
@@ -61,6 +76,10 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import dotenv from 'dotenv';
 
+/**
+ * 加载配置文件，优先从当前目录加载，然后从home目录加载（并合并默认配置），如果都没有则使用默认配置 
+ * @returns 
+ */
 export function loadConfig(): Config {
   // Try loading from current directory first
   try {
@@ -80,6 +99,10 @@ export function loadConfig(): Config {
   }
 }
 
+/**
+ * 把自定义的环境变量(.cursor-tools.env)加载到process.env中  
+ * @returns 
+ */ 
 export function loadEnv(): void {
   // Try loading from current directory first
   const localEnvPath = join(process.cwd(), '.cursor-tools.env');
